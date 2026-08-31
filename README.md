@@ -67,7 +67,7 @@ git push origin main
 
 Attendez ~1 minute. Votre app sera disponible à :
 ```
-https://VOTRE_USERNAME.github.io/hornet-tracker/
+https://Berny70.github.io/hornet-tracker/
 ```
 
 ### Étape 4 : Tester sur smartphone

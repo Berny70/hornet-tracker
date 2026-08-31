@@ -45,7 +45,7 @@ Une application Progressive Web App pour tracker un frelon en temps réel avec d
 
 ```bash
 # Cloner le repo
-git clone https://github.com/VOTRE_USERNAME/hornet-tracker.git
+git clone https://github.com/Berny70/hornet-tracker.git
 cd hornet-tracker
 
 # Copier les fichiers
@@ -74,7 +74,7 @@ https://Berny70.github.io/hornet-tracker/
 
 1. **Ouvrez le lien** sur votre téléphone :
    ```
-   https://VOTRE_USERNAME.github.io/hornet-tracker/
+   https://Berny70.github.io/hornet-tracker/
    ```
 
 2. **Installez la PWA** :

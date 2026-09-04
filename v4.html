@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Frelon Tracker">
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="description" content="Frelon Tracker v4 avec sélection tactile">
+  <title>Frelon Tracker v4.0 🐝</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Ccircle cx='24' cy='24' r='20' fill='%23ff6b00'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23ffd700'/%3E%3C/svg%3E">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #video-container {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: grayscale(1);
+      touch-action: none;
+    }
+    #video {
+      display: none;
+    }
+    .tracker-dot {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #ff00ff;
+      box-shadow: 0 0 12px #ff00ff, 0 0 24px rgba(255, 0, 255, 0.5);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 10;
+      transition: all 0.05s ease-out;
+    }
+
+    .target-marker {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #00ff00;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 9;
+      display: none;
+      box-shadow: 0 0 15px #00ff00;
+    }
+
+    .target-marker.active {
+      display: block;
+      animation: targetPulse 0.5s infinite;
+    }
+
+    @keyframes targetPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .target-crosshair {
+      position: absolute;
+      width: 2px;
+      height: 15px;
+      background: #00ff00;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .target-crosshair.horizontal {
+      width: 15px;
+      height: 2px;
+    }
+
+    .calibration-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 30;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .calibration-overlay.active {
+      display: flex;
+    }
+    .calibration-box {
+      background: rgba(0, 0, 0, 0.9);
+      border: 3px solid #00aa00;
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 90%;
+      text-align: center;
+    }
+    .calibration-box h2 {
+      color: #00aa00;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+    .calibration-box p {
+      color: #aaa;
+      margin-bottom: 10px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .calibration-steps {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    .calibration-step {
+      padding: 12px;
+      background: rgba(0, 170, 0, 0.1);
+      border: 1px solid #00aa00;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .calibration-step.done {
+      background: rgba(0, 170, 0, 0.3);
+    }
+    .calibration-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .cal-btn {
+      padding: 10px 16px;
+      background: #00aa00;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .cal-btn:active {
+      background: #00dd00;
+    }
+    .cal-btn.cancel {
+      background: #666;
+      color: #fff;
+    }
+
+    .debug-info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #0f0;
+      font-family: monospace;
+      z-index: 20;
+      display: none;
+      max-width: 200px;
+    }
+    .debug-info.visible {
+      display: block;
+    }
+
+    .info {
+      padding: 8px 16px;
+      background: rgba(255, 107, 0, 0.1);
+      border-left: 3px solid #ff6b00;
+      font-size: 13px;
+      color: #aaa;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .info.hidden {
+      display: none;
+    }
+    .status {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4ade80;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .controls {
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 12px;
+    }
+    button {
+      padding: 8px 16px;
+      background: #ff6b00;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:active {
+      background: #e55a00;
+      transform: scale(0.98);
+    }
+    button:disabled {
+      background: #666;
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #444;
+      padding: 6px 12px;
+      font-size: 11px;
+    }
+    button.secondary:active {
+      background: #555;
+    }
+    button.target {
+      background: #00aa00;
+      padding: 8px 12px;
+    }
+    button.target:active {
+      background: #00dd00;
+    }
+
+    .compass-container {
+      position: absolute;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 15;
+      gap: 5px;
+    }
+
+    .compass-arrow {
+      font-size: 28px;
+      color: #ff6b00;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .compass-heading {
+      font-size: 16px;
+      color: #ffd700;
+      font-weight: bold;
+      text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+      letter-spacing: 1px;
+    }
+
+    .hint {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #ffd700;
+      pointer-events: none;
+      z-index: 15;
+      display: none;
+      white-space: nowrap;
+    }
+    .hint.show {
+      display: block;
+      animation: fadeInOut 3s ease-in-out;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="video-container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div class="tracker-dot" id="dot"></div>
+    <div class="target-marker" id="targetMarker">
+      <div class="target-crosshair"></div>
+      <div class="target-crosshair horizontal"></div>
+    </div>
+    <div class="debug-info" id="debug"></div>
+    
+    <div class="compass-container">
+      <div class="compass-arrow" id="compassArrow">⬆️</div>
+      <div class="compass-heading" id="compassHeading">---°</div>
+    </div>
+
+    <div class="hint" id="hint">👆 Touchez pour désigner une cible</div>
+    
+    <div class="calibration-overlay" id="calibrationOverlay">
+      <div class="calibration-box">
+        <h2>📐 Calibrage Spatial</h2>
+        <p>Placez l'abricot à chaque position et appuyez sur "Valider"</p>
+        
+        <div class="calibration-steps">
+          <div class="calibration-step" id="step1">1. Bas-gauche</div>
+          <div class="calibration-step" id="step2">2. Bas-droite</div>
+          <div class="calibration-step" id="step3">3. Haut-gauche</div>
+          <div class="calibration-step" id="step4">4. Haut-droite</div>
+        </div>
+        
+        <p id="calibProgress" style="color: #ffd700; font-weight: bold; margin-top: 15px;">Étape 1/4 : Bas-gauche</p>
+        
+        <div class="calibration-buttons">
+          <button class="cal-btn" id="calibSubmitBtn">✓ Valider</button>
+          <button class="cal-btn cancel" id="calibCancelBtn">✗ Annuler</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="info" id="info">
+    <span>Caméra active • Suivi en cours</span>
+    <div class="status">
+      <div class="status-dot"></div>
+      <span id="fps">60 fps</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn">Démarrer</button>
+    <button id="stopBtn" disabled>Arrêter</button>
+    <button id="toggleTrack" disabled>Pause</button>
+    <button id="resetTargetBtn" class="target" disabled>🎯 Reset cible</button>
+    <button id="calibrateBtn" class="secondary" disabled>⚙️ Calibrer</button>
+    <button id="compassBtn" class="secondary" disabled>🧭 Autoriser boussole</button>
+    <button id="toggleDebug" class="secondary">🐛 Debug</button>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(console.log);
+    }
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const dot = document.getElementById('dot');
+    const targetMarker = document.getElementById('targetMarker');
+    const hint = document.getElementById('hint');
+    
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const toggleTrackBtn = document.getElementById('toggleTrack');
+    const toggleDebugBtn = document.getElementById('toggleDebug');
+    const compassBtn = document.getElementById('compassBtn');
+    const calibrateBtn = document.getElementById('calibrateBtn');
+    const resetTargetBtn = document.getElementById('resetTargetBtn');
+    const calibrationOverlay = document.getElementById('calibrationOverlay');
+    const calibSubmitBtn = document.getElementById('calibSubmitBtn');
+    const calibCancelBtn = document.getElementById('calibCancelBtn');
+    const calibProgress = document.getElementById('calibProgress');
+    const debugInfo = document.getElementById('debug');
+    const infoBar = document.getElementById('info');
+    const fpsDisplay = document.getElementById('fps');
+    const compassArrow = document.getElementById('compassArrow');
+    const compassHeading = document.getElementById('compassHeading');
+
+    let isTracking = true;
+    let isRunning = false;
+    let debugMode = false;
+    let frameCount = 0;
+    let lastTime = performance.now();
+    let lastDetectionX = 0;
+    let lastDetectionY = 0;
+
+    // Cible sélectionnée
+    let targetX = -1;
+    let targetY = -1;
+    let targetRadius = 100; // Rayon de recherche en pixels
+
+    // Calibration
+    let isCalibrating = false;
+    let calibrationStep = 0;
+    let calibrationPoints = [];
+    let calibrationOffsets = { x: 0, y: 0 };
+
+    function loadCalibration() {
+      const saved = localStorage.getItem('hornetTrackerCalibration');
+      if (saved) {
+        calibrationOffsets = JSON.parse(saved);
+        console.log('Calibration chargée:', calibrationOffsets);
+      }
+    }
+
+    function saveCalibration() {
+      localStorage.setItem('hornetTrackerCalibration', JSON.stringify(calibrationOffsets));
+    }
+
+    loadCalibration();
+
+    // Boussole (Compass)
+    let currentHeading = 0;
+    let compassEnabled = false;
+
+    // Fonction pour activer la boussole
+    async function enableCompass() {
+      try {
+        if (typeof DeviceOrientationEvent === 'undefined') {
+          alert('❌ DeviceOrientation non supporté sur cet appareil');
+          console.log('DeviceOrientationEvent non supporté');
+          return;
+        }
+
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+          // iOS 13+
+          console.log('📱 Demande permission iOS...');
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission === 'granted') {
+            window.addEventListener('deviceorientation', handleDeviceOrientation);
+            compassEnabled = true;
+            compassBtn.disabled = true;
+            compassBtn.textContent = '🧭 Boussole activée ✓';
+            console.log('✓ Boussole activée (iOS)');
+            alert('✓ Boussole activée !');
+          } else {
+            console.log('❌ Permission refusée');
+            alert('❌ Permission refusée pour la boussole');
+          }
+        } else {
+          // Android et autres
+          console.log('📱 Android - Activation boussole...');
+          window.addEventListener('deviceorientation', handleDeviceOrientation);
+          compassEnabled = true;
+          compassBtn.disabled = true;
+          compassBtn.textContent = '🧭 Boussole activée ✓';
+          console.log('✓ Boussole activée (Android)');
+        }
+      } catch (err) {
+        console.error('❌ Erreur boussole:', err);
+        alert('❌ Erreur : ' + err.message);
+      }
+    }
+
+    function handleDeviceOrientation(event) {
+      const alpha = event.alpha; // 0 à 360 (rotation Z = cap magnétique)
+      const beta = event.beta;   // -180 à 180 (avant/arrière)
+      const gamma = event.gamma; // -90 à 90 (gauche/droite)
+
+      if (!isNaN(alpha) && alpha !== null) {
+        currentHeading = Math.round(alpha) % 360;
+      }
+
+      // Afficher le cap et la direction
+      const direction = getDirection(currentHeading);
+      compassHeading.textContent = `${currentHeading}° ${direction}`;
+    }
+
+    function getDirection(heading) {
+      if (heading >= 337.5 || heading < 22.5) return 'N';
+      if (heading >= 22.5 && heading < 67.5) return 'NE';
+      if (heading >= 67.5 && heading < 112.5) return 'E';
+      if (heading >= 112.5 && heading < 157.5) return 'SE';
+      if (heading >= 157.5 && heading < 202.5) return 'S';
+      if (heading >= 202.5 && heading < 247.5) return 'SW';
+      if (heading >= 247.5 && heading < 292.5) return 'W';
+      if (heading >= 292.5 && heading < 337.5) return 'NW';
+      return 'N';
+    }
+
+    const colorThresholds = {
+      minH: 15,
+      maxH: 40,
+      minS: 60,
+      minL: 45,
+    };
+
+    function rgbToHsl(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      let h = 0, s = 0, l = (max + min) / 2;
+
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+          case g: h = ((b - r) / d + 2) / 6; break;
+          case b: h = ((r - g) / d + 4) / 6; break;
+        }
+      }
+      return { h: h * 360, s: s * 100, l: l * 100 };
+    }
+
+    function isHornetColor(r, g, b) {
+      const hsl = rgbToHsl(r, g, b);
+      return (hsl.h >= colorThresholds.minH && hsl.h <= colorThresholds.maxH &&
+              hsl.s >= colorThresholds.minS && hsl.l >= colorThresholds.minL);
+    }
+
+    function findAllBlobs(binaryPixels, w, h, minBlobSize = 30) {
+      const visited = new Uint8Array(w * h);
+      const blobs = [];
+
+      function floodFill(startIdx) {
+        const stack = [startIdx];
+        let blobSize = 0, blobX = 0, blobY = 0;
+
+        while (stack.length > 0) {
+          const idx = stack.pop();
+          if (visited[idx] || !binaryPixels[idx]) continue;
+
+          visited[idx] = 1;
+          blobSize++;
+          blobX += idx % w;
+          blobY += Math.floor(idx / w);
+
+          if (idx - w >= 0) stack.push(idx - w);
+          if (idx + w < w * h) stack.push(idx + w);
+          if (idx % w > 0) stack.push(idx - 1);
+          if (idx % w < w - 1) stack.push(idx + 1);
+        }
+
+        return { size: blobSize, x: blobX / blobSize, y: blobY / blobSize };
+      }
+
+      for (let i = 0; i < binaryPixels.length; i++) {
+        if (binaryPixels[i] && !visited[i]) {
+          const blob = floodFill(i);
+          if (blob.size > minBlobSize) {
+            blobs.push(blob);
+          }
+        }
+      }
+
+      return blobs;
+    }
+
+    function findClosestBlob(blobs, targetX, targetY) {
+      if (blobs.length === 0) return null;
+      if (blobs.length === 1) return blobs[0];
+
+      // Si pas de cible, retourner le plus gros blob
+      if (targetX < 0 || targetY < 0) {
+        return blobs.reduce((a, b) => a.size > b.size ? a : b);
+      }
+
+      // Sinon, retourner le blob le plus proche de la cible
+      let closest = blobs[0];
+      let minDist = Math.hypot(blobs[0].x - targetX, blobs[0].y - targetY);
+
+      for (let i = 1; i < blobs.length; i++) {
+        const dist = Math.hypot(blobs[i].x - targetX, blobs[i].y - targetY);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = blobs[i];
+        }
+      }
+
+      return closest;
+    }
+
+    function detectFrelon() {
+      if (!isTracking || !isRunning) return;
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.drawImage(video, 0, 0, w, h);
+
+      // Région d'intérêt adaptative (plus grande pour suivre les mouvements rapides)
+      const roiSize = targetX >= 0 && targetY >= 0 ? 200 : 0; // 200px quand cible verrouillée
+      let roiX1 = 0, roiY1 = 0, roiX2 = w, roiY2 = h;
+      
+      if (targetX >= 0 && targetY >= 0 && roiSize > 0) {
+        roiX1 = Math.max(0, Math.floor(targetX - roiSize));
+        roiY1 = Math.max(0, Math.floor(targetY - roiSize));
+        roiX2 = Math.min(w, Math.floor(targetX + roiSize));
+        roiY2 = Math.min(h, Math.floor(targetY + roiSize));
+      }
+
+      const imageData = ctx.getImageData(roiX1, roiY1, roiX2 - roiX1, roiY2 - roiY1);
+      const data = imageData.data;
+
+      const binaryPixels = new Uint8Array((roiX2 - roiX1) * (roiY2 - roiY1));
+      let pixelCount = 0;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        if (isHornetColor(r, g, b)) {
+          binaryPixels[i / 4] = 1;
+          pixelCount++;
+        }
+      }
+
+      // Seuils adaptatifs très tolérants pour ne pas perdre la cible
+      const minPixelCount = targetX >= 0 && targetY >= 0 ? 8 : 50;
+      const minBlobSize = targetX >= 0 && targetY >= 0 ? 6 : 30;
+      
+      // Dessiner la ROI en debug
+      if (debugMode && targetX >= 0 && targetY >= 0) {
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(roiX1, roiY1, roiX2 - roiX1, roiY2 - roiY1);
+      }
+
+      if (pixelCount > minPixelCount) {
+        const blobs = findAllBlobs(binaryPixels, roiX2 - roiX1, roiY2 - roiY1, minBlobSize);
+        
+        // Décaler les coordonnées des blobs selon la ROI
+        for (let blob of blobs) {
+          blob.x += roiX1;
+          blob.y += roiY1;
+        }
+        
+        let blob = findClosestBlob(blobs, targetX, targetY);
+        
+        // Si blob perdu dans ROI, chercher dans une zone plus large (élargissement)
+        if (!blob && targetX >= 0 && targetY >= 0) {
+          const expandedSize = 300;
+          const expX1 = Math.max(0, Math.floor(targetX - expandedSize));
+          const expY1 = Math.max(0, Math.floor(targetY - expandedSize));
+          const expX2 = Math.min(w, Math.floor(targetX + expandedSize));
+          const expY2 = Math.min(h, Math.floor(targetY + expandedSize));
+          
+          const expImageData = ctx.getImageData(expX1, expY1, expX2 - expX1, expY2 - expY1);
+          const expData = expImageData.data;
+          const expBinaryPixels = new Uint8Array((expX2 - expX1) * (expY2 - expY1));
+          
+          for (let i = 0; i < expData.length; i += 4) {
+            const r = expData[i], g = expData[i + 1], b = expData[i + 2];
+            if (isHornetColor(r, g, b)) {
+              expBinaryPixels[i / 4] = 1;
+            }
+          }
+          
+          const expBlobs = findAllBlobs(expBinaryPixels, expX2 - expX1, expY2 - expY1, 5);
+          for (let b of expBlobs) {
+            b.x += expX1;
+            b.y += expY1;
+          }
+          blob = findClosestBlob(expBlobs, targetX, targetY);
+        }
+        
+        if (blob && blob.size > minBlobSize) {
+          const canvasRect = canvas.getBoundingClientRect();
+          const scaleX = canvasRect.width / canvas.width;
+          const scaleY = canvasRect.height / canvas.height;
+          
+          const displayX = blob.x * scaleX + canvasRect.left;
+          const displayY = blob.y * scaleY + canvasRect.top;
+          
+          const correctedX = displayX + calibrationOffsets.x * scaleX;
+          const correctedY = displayY + calibrationOffsets.y * scaleY;
+          
+          dot.style.left = correctedX + 'px';
+          dot.style.top = correctedY + 'px';
+          dot.style.display = 'block';
+
+          lastDetectionX = blob.x;
+          lastDetectionY = blob.y;
+
+          // Mettre à jour la position de la mire si une cible est sélectionnée
+          if (targetX >= 0 && targetY >= 0) {
+            // Chercher le blob sélectionné dans la liste
+            const selectedBlob = findClosestBlob(blobs, targetX, targetY);
+            if (selectedBlob && Math.hypot(selectedBlob.x - targetX, selectedBlob.y - targetY) < 50) {
+              // C'est toujours notre blob cible, mettre à jour la mire
+              const targetDisplayX = selectedBlob.x * scaleX + canvasRect.left;
+              const targetDisplayY = selectedBlob.y * scaleY + canvasRect.top;
+              
+              targetMarker.style.left = targetDisplayX + 'px';
+              targetMarker.style.top = targetDisplayY + 'px';
+            }
+          }
+
+          if (debugMode) {
+            const distToTarget = targetX >= 0 ? Math.hypot(blob.x - targetX, blob.y - targetY).toFixed(0) : 'N/A';
+            const roiInfo = targetX >= 0 && targetY >= 0 ? `Zone: ${roiSize > 0 ? 'ROI' : 'Full'}` : 'Zone: Full';
+            debugInfo.textContent = `Blob: ${blob.size}px\nPos: ${Math.round(blob.x)}, ${Math.round(blob.y)}\nCible: ${targetX >= 0 ? '✓' : '✗'}\nDist: ${distToTarget}px\n${roiInfo}\nBlobs: ${blobs.length}`;
+          }
+        } else {
+          dot.style.display = 'none';
+        }
+      } else {
+        dot.style.display = 'none';
+      }
+    }
+
+    function animationLoop() {
+      detectFrelon();
+
+      frameCount++;
+      const now = performance.now();
+      if (now - lastTime >= 1000) {
+        fpsDisplay.textContent = frameCount + ' fps';
+        frameCount = 0;
+        lastTime = now;
+      }
+
+      requestAnimationFrame(animationLoop);
+    }
+
+    // Gestion du toucher - avec détection du blob exact
+    canvas.addEventListener('click', (e) => {
+      if (!isRunning || isCalibrating) return;
+      
+      const canvasRect = canvas.getBoundingClientRect();
+      const screenX = e.clientX;
+      const screenY = e.clientY;
+
+      // Convertir les coordonnées écran en coordonnées canvas
+      const canvasX = (screenX - canvasRect.left) / (canvasRect.width / canvas.width);
+      const canvasY = (screenY - canvasRect.top) / (canvasRect.height / canvas.height);
+
+      // Chercher le blob exact sous le doigt
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      const binaryPixels = new Uint8Array(canvas.width * canvas.height);
+      let pixelCount = 0;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        if (isHornetColor(r, g, b)) {
+          binaryPixels[i / 4] = 1;
+          pixelCount++;
+        }
+      }
+
+      if (pixelCount > 20) {
+        const blobs = findAllBlobs(binaryPixels, canvas.width, canvas.height, 15);
+        const touchedBlob = findClosestBlob(blobs, canvasX, canvasY);
+
+        if (touchedBlob && touchedBlob.size > 15) {
+          // Blob trouvé sous le doigt
+          targetX = touchedBlob.x;
+          targetY = touchedBlob.y;
+
+          // Afficher le marqueur à la position du blob
+          const displayX = touchedBlob.x * (canvasRect.width / canvas.width) + canvasRect.left;
+          const displayY = touchedBlob.y * (canvasRect.height / canvas.height) + canvasRect.top;
+          
+          targetMarker.style.left = displayX + 'px';
+          targetMarker.style.top = displayY + 'px';
+          targetMarker.classList.add('active');
+          
+          resetTargetBtn.disabled = false;
+          hint.classList.remove('show');
+          
+          if (debugMode) {
+            debugInfo.textContent = `✓ Cible verrouillée\nBlob: ${touchedBlob.size}px\nPos: ${Math.round(touchedBlob.x)}, ${Math.round(touchedBlob.y)}`;
+          }
+        } else {
+          alert('❌ Aucun objet détecté à cette position. Touchez directement l\'objet.');
+        }
+      } else {
+        alert('❌ Aucun objet détecté. Placez l\'abricot et réessayez.');
+      }
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (!isRunning || isCalibrating) return;
+      e.preventDefault();
+      
+      const touch = e.touches[0];
+      const canvasRect = canvas.getBoundingClientRect();
+      const screenX = touch.clientX;
+      const screenY = touch.clientY;
+
+      const canvasX = (screenX - canvasRect.left) / (canvasRect.width / canvas.width);
+      const canvasY = (screenY - canvasRect.top) / (canvasRect.height / canvas.height);
+
+      // Chercher le blob exact sous le doigt
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      const binaryPixels = new Uint8Array(canvas.width * canvas.height);
+      let pixelCount = 0;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        if (isHornetColor(r, g, b)) {
+          binaryPixels[i / 4] = 1;
+          pixelCount++;
+        }
+      }
+
+      if (pixelCount > 20) {
+        const blobs = findAllBlobs(binaryPixels, canvas.width, canvas.height, 15);
+        const touchedBlob = findClosestBlob(blobs, canvasX, canvasY);
+
+        if (touchedBlob && touchedBlob.size > 15) {
+          targetX = touchedBlob.x;
+          targetY = touchedBlob.y;
+
+          const displayX = touchedBlob.x * (canvasRect.width / canvas.width) + canvasRect.left;
+          const displayY = touchedBlob.y * (canvasRect.height / canvas.height) + canvasRect.top;
+          
+          targetMarker.style.left = displayX + 'px';
+          targetMarker.style.top = displayY + 'px';
+          targetMarker.classList.add('active');
+
+          resetTargetBtn.disabled = false;
+          hint.classList.remove('show');
+        }
+      }
+    });
+
+    // Gestionnaire boussole
+    compassBtn.addEventListener('click', async () => {
+      compassBtn.disabled = true;
+      compassBtn.textContent = '🧭 Demande permission...';
+      await enableCompass();
+    });
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 640 },
+            height: { ideal: 360 }
+          }
+        });
+        video.srcObject = stream;
+        video.onloadedmetadata = async () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          isRunning = true;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          toggleTrackBtn.disabled = false;
+          calibrateBtn.disabled = false;
+          infoBar.classList.remove('hidden');
+          hint.classList.add('show');
+          
+          // Activer le bouton boussole
+          compassBtn.disabled = false;
+          compassBtn.textContent = '🧭 Autoriser boussole';
+
+          // Appliquer le zoom optique si disponible
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            try {
+              const capabilities = videoTrack.getCapabilities();
+              if (capabilities.zoom) {
+                // Le smartphone supporte le zoom optique
+                const maxZoom = capabilities.zoom.max;
+                const minZoom = capabilities.zoom.min;
+                
+                // Activer le mode ultra-large si disponible
+                if (maxZoom > 1) {
+                  await videoTrack.applyConstraints({
+                    zoom: minZoom  // Zoom mini = ultra-large
+                  });
+                  console.log(`Zoom optique activé (${minZoom}-${maxZoom}x)`);
+                }
+              }
+            } catch (e) {
+              console.log('Zoom optique non disponible sur cet appareil');
+            }
+          }
+
+          animationLoop();
+        };
+      } catch (err) {
+        alert('Impossible d\'accéder à la caméra.');
+        console.error(err);
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      isRunning = false;
+      video.srcObject.getTracks().forEach(track => track.stop());
+      if (compassEnabled) {
+        window.removeEventListener('deviceorientation', handleDeviceOrientation);
+        compassEnabled = false;
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      toggleTrackBtn.disabled = true;
+      calibrateBtn.disabled = true;
+      resetTargetBtn.disabled = true;
+      compassBtn.disabled = true;
+      compassBtn.textContent = '🧭 Autoriser boussole';
+      dot.style.display = 'none';
+      targetMarker.classList.remove('active');
+      debugInfo.classList.remove('visible');
+      infoBar.classList.add('hidden');
+      hint.classList.remove('show');
+      compassHeading.textContent = '---°';
+    });
+
+    toggleTrackBtn.addEventListener('click', () => {
+      isTracking = !isTracking;
+      toggleTrackBtn.textContent = isTracking ? 'Pause' : 'Reprendre';
+      if (!isTracking) dot.style.display = 'none';
+    });
+
+    resetTargetBtn.addEventListener('click', () => {
+      targetX = -1;
+      targetY = -1;
+      targetMarker.classList.remove('active');
+      resetTargetBtn.disabled = true;
+      hint.classList.add('show');
+    });
+
+    toggleDebugBtn.addEventListener('click', () => {
+      debugMode = !debugMode;
+      toggleDebugBtn.textContent = debugMode ? '🐛 On' : '🐛 Off';
+      toggleDebugBtn.style.background = debugMode ? '#00aa00' : '#444';
+      if (debugMode) {
+        debugInfo.classList.add('visible');
+        console.log('Debug ON - Boussole:', compassEnabled ? '✓ Active' : '✗ Inactive');
+      } else {
+        debugInfo.classList.remove('visible');
+      }
+    });
+
+    calibrateBtn.addEventListener('click', () => {
+      isCalibrating = true;
+      calibrationStep = 0;
+      calibrationPoints = [];
+      calibrationOverlay.classList.add('active');
+      updateCalibrationUI();
+    });
+
+    calibSubmitBtn.addEventListener('click', () => {
+      if (lastDetectionX > 0 && lastDetectionY > 0) {
+        calibrationPoints.push({ x: lastDetectionX, y: lastDetectionY });
+        calibrationStep++;
+
+        if (calibrationStep < 4) {
+          updateCalibrationUI();
+        } else {
+          finishCalibration();
+        }
+      } else {
+        alert('Pas d\'objet détecté.');
+      }
+    });
+
+    calibCancelBtn.addEventListener('click', () => {
+      isCalibrating = false;
+      calibrationStep = 0;
+      calibrationPoints = [];
+      calibrationOverlay.classList.remove('active');
+    });
+
+    function updateCalibrationUI() {
+      const steps = ['step1', 'step2', 'step3', 'step4'];
+      const positions = ['Bas-gauche', 'Bas-droite', 'Haut-gauche', 'Haut-droite'];
+
+      steps.forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (i < calibrationStep) {
+          el.classList.add('done');
+        } else {
+          el.classList.remove('done');
+        }
+      });
+
+      calibProgress.textContent = `Étape ${calibrationStep + 1}/4 : ${positions[calibrationStep]}`;
+    }
+
+    function finishCalibration() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const expectedPositions = [
+        { x: w * 0.25, y: h * 0.75 },
+        { x: w * 0.75, y: h * 0.75 },
+        { x: w * 0.25, y: h * 0.25 },
+        { x: w * 0.75, y: h * 0.25 }
+      ];
+
+      let totalOffsetX = 0, totalOffsetY = 0;
+      calibrationPoints.forEach((point, i) => {
+        totalOffsetX += expectedPositions[i].x - point.x;
+        totalOffsetY += expectedPositions[i].y - point.y;
+      });
+
+      calibrationOffsets.x = totalOffsetX / 4;
+      calibrationOffsets.y = totalOffsetY / 4;
+
+      saveCalibration();
+      alert(`✓ Calibration réussie !`);
+      
+      isCalibrating = false;
+      calibrationOverlay.classList.remove('active');
+    }
+  </script>
+</body>
+</html>
